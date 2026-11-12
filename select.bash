@@ -2,6 +2,8 @@
 
 # Rofi/dmenu/wofi frontend for password-store with typing or clipboard copy:
 # Fuzzy search, select and type/paste passwords managed by password-store.
+# Typing: X11 uses xdotool. Wayland uses wtype when `wtype -s 1` succeeds,
+# else ydotool while ydotoold is running, else wdotool.
 # Based on https://github.com/petrmanek/passmenu-otp, which is
 # based on https://git.zx2c4.com/password-store/tree/contrib/dmenu/passmenu
 
@@ -48,6 +50,19 @@ die() {
 }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# `-s 1` connects and sleeps 1ms. It types nothing. Failure means this
+# compositor has no virtual-keyboard protocol (Mutter, KWin).
+wtype_protocol() {
+  have_cmd wtype || return 1
+  wtype -s 1 >/dev/null 2>&1
+}
+
+# ydotoold holds /dev/uinput. Without that daemon, ydotool cannot inject.
+ydotool_ready() {
+  have_cmd ydotool || return 1
+  pgrep -x ydotoold >/dev/null 2>&1
+}
 
 if [[ "${1-}" == "-h" || "${1-}" == "--help" ]]; then
   cat <<'EOF'
@@ -98,14 +113,17 @@ if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
     die "No suitable menu engine found (rofi/rofi-wayland or wofi)"
   fi
 
-  if have_cmd wtype; then
+  if wtype_protocol; then
     type_tool="wtype"
     type_args=(-)
-  elif have_cmd ydotool; then
+  elif ydotool_ready; then
     type_tool="ydotool"
     type_args=(type --file -)
+  elif have_cmd wdotool; then
+    type_tool="wdotool"
+    type_args=(type --delay 0 --clearmodifiers --file -)
   else
-    die "No suitable typing tool found on Wayland (ydotool)"
+    die "No suitable typing tool found on Wayland (wtype, ydotool with ydotoold, or wdotool)"
   fi
 
   if have_cmd wl-copy; then
