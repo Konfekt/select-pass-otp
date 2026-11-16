@@ -11,49 +11,42 @@ On Linux, there is [GNOME Authenticator](https://gitlab.gnome.org/World/Authenti
 To migrate existing OTP tokens from your mobile app to pass, say from Android [Aegis Authenticator](https://github.com/beemdevelopment/Aegis), first migrate your tokens with [pass-import](https://github.com/roddhjav/pass-import).
 (Plenty other imports [are supported](https://github.com/roddhjav/pass-import#description) as well, among them [1Password](https://1password.com/), [Bitwarden](https://bitwarden.com/), [KeePassXC](https://keepassxc.org/), [LastPass](https://www.lastpass.com/), and [Firefox](https://support.mozilla.org/en-US/kb/lockwise-manage-your-saved-logins).)
 
-Then with the accompanying `select.bash` script, browse pass entries through a menu tool (such as [rofi](https://github.com/davatorium/rofi) or [dmenu](https://tools.suckless.org/dmenu/)) to paste or copy both passwords and OTPs.
-
-For basic password copying you need only:  
-
-- [pass](https://www.passwordstore.org/) (password-store) with a working GPG setup,
-- a menu frontend ([rofi](https://github.com/davatorium/rofi) or [dmenu](https://tools.suckless.org/dmenu/)), and
-- a clipboard tool such as [xclip](https://github.com/astrand/xclip) on X11 or [wl-clipboard](https://github.com/bugaevc/wl-clipboard)/ on Wayland (most desktop environments already include these tools).
-
-For typing passwords instead of copying them to clipboard, you need a typing tool such as [xdotool](https://github.com/jordansissel/xdotool) (X11) or [wtype](https://github.com/atx/wtype) / [ydotool](https://github.com/ReimuNotMoe/ydotool) (Wayland).
-
-For OTP support and token import, you need [pass-otp](https://github.com/tadfisher/pass-otp) respectively [pass-import](https://github.com/roddhjav/pass-import). 
+Then with the accompanying `select.bash` script, browse pass entries through a menu tool (such as [rofi](https://github.com/davatorium/rofi) or [dmenu](https://tools.suckless.org/dmenu/)) to type or copy both passwords and OTPs.
 
 # Install prerequisites
 
-Install core:
+Required:
 
 - `bash`
 - `pass` (password-store) with working GPG
 
-Install one menu frontend:
+One menu frontend (required):
 
-- X11: `rofi` or `dmenu`
-- Wayland: `wofi` or Wayland-capable `rofi` (often packaged as `rofi-wayland`, invoked as `rofi`)
+- X11: [`rofi`](https://github.com/davatorium/rofi) or [`dmenu`](https://tools.suckless.org/dmenu/)
+- Wayland: Wayland-capable `rofi` (also found as `rofi-wayland`) or [`wofi`](https://hg.sr.ht/~scoopta/wofi)
 
-Install one clipboard tool:
+One typing tool, to type the secret into the focused window (the default action):
 
-- X11: `xclip` or `xsel`
-- Wayland: `wl-clipboard` (`wl-copy`, `wl-paste`)
+- X11: [`xdotool`](https://github.com/jordansissel/xdotool)
+- Wayland, tried in this order:
+  [`wtype`](https://github.com/atx/wtype) (needs a compositor with the virtual-keyboard protocol, such as Sway or Hyprland, but not GNOME or KDE),
+  [`ydotool`](https://github.com/ReimuNotMoe/ydotool) (needs the `ydotoold` daemon running), or `wdotool`
 
-Note: `pass -c` is guaranteed to work with `xclip`/`xsel`; some `pass` builds also support `wl-copy`.
+A clipboard tool, to copy instead of type (`--clip` or `Ctrl+Y` in rofi):
 
-Optionally install one typing tool (to type secret into focused window):
+- X11: [`xclip`](https://github.com/astrand/xclip) (or `xsel`)
+- Wayland: [`wl-clipboard`](https://github.com/bugaevc/wl-clipboard) (`wl-copy`)
 
-- X11: `xdotool`
-- Wayland: `wtype` (simpler) or `ydotool` (often requires extra permissions/daemon)
+Copying goes through `pass -c`, which clears the clipboard after `PASSWORD_STORE_CLIP_TIME` seconds (default 45).
+Only if that fails does the script copy with `wl-copy`, `xclip` or `xsel` itself, and then the clipboard is not cleared.
 
 Optional OTP support:
 
-- `pass-otp` (adds `pass otp`)
+- [`pass-otp`](https://github.com/tadfisher/pass-otp) (adds `pass otp`)
 
 Optional token import:
 
-- `pass-import`
+- [`pass-import`](https://github.com/roddhjav/pass-import)
 - If using `uv`: `uv` and Python >= 3.10
 
 Optional notifications:
@@ -62,7 +55,7 @@ Optional notifications:
 
 # Install `select.bash` as a `pass` extension
 
-`pass` discovers extensions in `$PASSWORD_STORE_EXTENSIONS_DIR`, `~/.password-store/.extensions/` (user) or a system extension directory.
+`pass` runs extensions from a system extension directory (such as `/usr/lib/password-store/extensions`) or, only if `PASSWORD_STORE_ENABLE_EXTENSIONS=true` is set, from the user directory `$PASSWORD_STORE_EXTENSIONS_DIR` (default `~/.password-store/.extensions/`).
 
 Install user-local:
 
@@ -72,13 +65,19 @@ curl -fsSL -o ~/.password-store/.extensions/select.bash https://github.com/Konfe
 chmod +x ~/.password-store/.extensions/select.bash
 ```
 
+and enable user extensions in the environment of your session (not only of your shell, if `pass select` is started by a key binding), say in `~/.profile`:
+
+```bash
+export PASSWORD_STORE_ENABLE_EXTENSIONS=true
+```
+
 If `select.bash` already exists elsewhere, prefer a symlink:
 
 ```bash
 ln -sf ~/bin/select.bash ~/.password-store/.extensions/select.bash
 ```
 
-If `select.bash` detects OTP fields, selection can call `pass otp` automatically (script behavior).
+`select.bash` also runs standalone, without being a `pass` extension.
 
 # Usage
 
@@ -94,10 +93,13 @@ Force clipboard mode:
 pass select --clip
 ```
 
-Typical behavior (script-dependent):
+For the selected entry, the OTP (`pass otp`) is used if the entry has one, otherwise its password (the first line).
 
-- `rofi`: Enter types into focused window, and a custom keybinding copies to clipboard.
-- `dmenu`/`wofi`: typing is default unless `--clip` is used.
+- `rofi`: `Enter` types into the focused window (or copies, with `--clip`), and `Ctrl+Y` copies to the clipboard.
+- `dmenu`/`wofi`: `Enter` types, or copies with `--clip`.
+
+Set `TRACE=1` to trace the script for debugging.
+When started without a terminal, errors are also shown as desktop notifications if `notify-send` is installed.
 
 # Bind `pass select` to `Meta+P`
 
@@ -132,4 +134,13 @@ Verify:
 
 ```bash
 pass otp otp/<imported-entry-name>
+```
+
+# Development
+
+Lint and run the smoke tests (which stub `pass` and the menu, typing and clipboard tools):
+
+```bash
+shellcheck select.bash tests/smoke.bash
+bash tests/smoke.bash
 ```
