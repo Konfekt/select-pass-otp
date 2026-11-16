@@ -22,6 +22,10 @@ stub() { # stub NAME BODY
 mkdir -p "$tmp/stubs"
 stub pass <<'STUB'
 cmd=$1; shift; clip=0
+# Without pass-otp, pass runs `pass show otp ...`: the `otp` folder's tree.
+if [[ $cmd == otp && -n ${PASS_NO_OTP:-} ]]; then
+  printf 'otp\n`-- c\n'; exit 0
+fi
 [[ $1 == -c ]] && { clip=1; shift; }
 f=$PASSWORD_STORE_DIR/$1.gpg
 [[ -f $f ]] || exit 1
@@ -103,6 +107,12 @@ run "Wayland without usable typing tool fails" 1 "" "pass wofi wtype" \
   "${way[@]}" WTYPE_FAIL=1 MENU_PICK=web/b
 run "Wayland clipboard fallback" 0 "clip:pw1" "pass wofi wl-copy" \
   "${way[@]}" PASS_CLIP_FAILS=1 MENU_PICK=web/b -- --clip
+run "without pass-otp, a password entry types its password" 0 "typed:pw1" \
+  "pass rofi xdotool" "${x11[@]}" PASS_NO_OTP=1 MENU_PICK=web/b
+run "without pass-otp, an OTP entry fails instead of typing its URI" 1 "" \
+  "pass rofi xdotool" "${x11[@]}" PASS_NO_OTP=1 MENU_PICK=otp/c
+run "without pass-otp, copying an OTP entry fails" 1 "" "pass rofi xclip" \
+  "${x11[@]}" PASS_NO_OTP=1 MENU_PICK=otp/c -- --clip
 run "no display fails" 1 "" "pass rofi xdotool"
 run "missing pass fails" 1 "" "rofi xdotool" "${x11[@]}"
 run "--help" 0 "" "" -- --help
