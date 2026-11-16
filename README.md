@@ -42,7 +42,7 @@ Only if that fails does the script copy with `wl-copy`, `xclip` or `xsel` itself
 
 Optional OTP support:
 
-- [`pass-otp`](https://github.com/tadfisher/pass-otp) (adds `pass otp`)
+- [`pass-otp`](https://github.com/tadfisher/pass-otp) (adds `pass otp`; required for entries with an `otpauth://` URI)
 
 Optional token import:
 
@@ -93,7 +93,8 @@ Force clipboard mode:
 pass select --clip
 ```
 
-For the selected entry, the OTP (`pass otp`) is used if the entry has one, otherwise its password (the first line).
+For the selected entry, the OTP (`pass otp`) is used if the entry contains an `otpauth://` URI, otherwise its password (the first line).
+Such an entry needs `pass-otp`: without it, the script stops with an error rather than typing or copying the URI and its secret.
 
 - `rofi`: `Enter` types into the focused window (or copies, with `--clip`), and `Ctrl+Y` copies to the clipboard.
 - `dmenu`/`wofi`: `Enter` types, or copies with `--clip`.

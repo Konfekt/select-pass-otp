@@ -185,11 +185,24 @@ done < <(
 
 (( ${#password_files[@]} )) || die "No .gpg entries found under: $dir"
 
-# The OTP if the entry has one, else its first line (the password).
-# `sed -n 1p` reads all input (no SIGPIPE for `pass` under pipefail) and,
-# unlike `read`, keeps a last line that lacks a trailing newline.
-read_secret() {
-  pass otp "$1" 2>/dev/null || pass show "$1" | sed -n 1p
+# Set `secret` for an entry, decrypting it once. An entry holding an
+# otpauth:// URI gets its OTP, any other its first line (the password);
+# `$(...)` keeps a last line that lacks a trailing newline.
+# Never fall back to the first line of an OTP entry: it may be the otpauth://
+# URI with its secret. Without pass-otp, `pass otp NAME` runs `pass show otp`,
+# which exits 0 with the `otp` folder's tree, so check the code's shape too.
+entry_has_otp=0
+load_secret() {
+  local content
+  content="$(pass show "$1")" || die "Could not decrypt: $1"
+  if [[ "$content" == *otpauth://* ]]; then
+    entry_has_otp=1
+    secret="$(pass otp "$1" 2>/dev/null)" || secret=""
+    [[ "$secret" =~ ^[[:alnum:]]{4,10}$ ]] ||
+      die "Could not generate the OTP of $1 (is pass-otp installed?)"
+  else
+    secret=${content%%$'\n'*}
+  fi
 }
 
 copy_to_clipboard() {
@@ -214,16 +227,20 @@ if [[ "$menu_tool" == "rofi" || "$menu_tool" == "rofi-wayland" ]]; then
 fi
 
 if [[ "$action" == "clip" ]]; then
-  # Prefer `pass -c`, which clears the clipboard after a while.
-  pass otp -c "$password" >/dev/null 2>&1 || pass show -c "$password" >/dev/null 2>&1 || {
-    secret="$(read_secret "$password")" || die "Could not decrypt: $password"
-    copy_to_clipboard "$secret" || die "Clipboard copy failed (install wl-copy on Wayland, or xclip/xsel on X11)"
-  }
+  load_secret "$password"
+  # Prefer `pass -c`, which clears the clipboard after a while. The OTP was
+  # generated above, so `pass otp -c` only runs once pass-otp is known to work.
+  if (( entry_has_otp )); then
+    pass otp -c "$password" >/dev/null 2>&1 && exit 0
+  else
+    pass show -c "$password" >/dev/null 2>&1 && exit 0
+  fi
+  copy_to_clipboard "$secret" || die "Clipboard copy failed (install wl-copy on Wayland, or xclip/xsel on X11)"
   exit 0
 fi
 
 find_type_tool
-secret="$(read_secret "$password")" || die "Could not decrypt: $password"
+load_secret "$password"
 printf '%s' "$secret" | "$type_tool" "${type_args[@]}"
 
 # Release modifier keys to avoid them getting stuck
